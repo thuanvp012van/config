@@ -1,0 +1,35 @@
+{
+    "name": "penguin/config",
+    "description": "The Penguin Config package.",
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Nguyễn Hoàng Thắng Thuận",
+            "email": "thuanvp012van@gmail.com",
+            "role": "Developer"
+        }
+    ],
+    "minimum-stability": "dev",
+    "autoload": {
+        "psr-4": {
+            "Penguin\\Component\\Config\\": "src"
+        },
+        "files": [
+            "./src/functions.php"
+        ]
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Penguin\\Component\\Config\\Tests\\": "tests"
+        }
+    },
+    "require": {
+        "php": ">=8.1",
+        "penguin/plug": "^1.0",
+        "penguin/container": "dev-main"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^9.5"
+    }
+}
