@@ -5,7 +5,7 @@ namespace Penguin\Component\Config;
 use Penguin\Component\Config\Exception\ConfigNotFoundException;
 use stdClass;
 
-class Repository
+class Repository implements RepositoryInterface
 {
     /**
      * Store the configs.
@@ -15,6 +15,13 @@ class Repository
     protected array $configs = [];
 
     /**
+     * Store the original configs.
+     *
+     * @var array<string, mixed>
+     */
+    protected array $originalConfigs = [];
+
+    /**
      * Get config by name.
      *
      * @param string $name
@@ -22,11 +29,15 @@ class Repository
      */
     public function get(string $name): mixed
     {
-        if (!$this->has($name)) {
-            return null;
+        if (isset($this->configs[$name])) {
+            return $this->configs[$name];
         }
 
-        return $this->configs[$name];
+        if (isset($this->originalConfigs[$name])) {
+            return $this->originalConfigs[$name];
+        }
+
+        return null;
     }
 
     /**
@@ -38,22 +49,67 @@ class Repository
      */
     public function set(string $name, mixed $config): static
     {
+        return $this->setConfig('configs', $name, $config);
+    }
+
+    /**
+     * Set original config.
+     *
+     * @param string $name
+     * @param mixed $config
+     * @return $this
+     */
+    public function setOriginal(string $name, mixed $config): static
+    {
+        return $this->setConfig('originalConfigs', $name, $config);
+    }
+
+    protected function setConfig(string $storeName, string $name, mixed $config): static
+    {
+        $store = &$this->{$storeName};
+        $keys = explode('.', $name);
         if (is_array($config) || $config instanceof stdClass) {
             $config = $this->toObject($config);
-            foreach ($this->configs as $key => &$value) {
+            foreach ($store as $key => &$value) {
                 if (strpos($key, $name) !== false) {
-                    unset($value);
+                    unset($store[$key]);
                 } else if (strpos($name, $key) !== false && $name !== $key) {
-                    $keys = explode('.', str_replace("$key.", '', $name));
+                    $keys = array_slice($keys, 1);
                     $this->removeRecursive($value, $keys);
                     $this->addRecursive($value, $keys, $config);
                 }
             }
-            $this->configs = array_merge($this->configs, $this->extractConfig($name, $config));
+            $store = array_merge($store, $this->extractConfig($name, $config));
         } else {
-            $this->configs[$name] = $config;
+            $firstKey = $keys[0];
+            $store[$firstKey] = !empty($store[$firstKey]) ? $store[$firstKey] : new stdClass;
+            $this->addRecursiveByKeys($store, $store[$firstKey], $firstKey, array_slice($keys, 1), $config);
         }
+        
         return $this;
+    }
+
+    /**
+     * Add recursive by keys.
+     *
+     * @param array &$store
+     * @param stdClass &$element
+     * @param string &$name
+     * @param array $keys
+     * @param mixed $config
+     */
+    protected function addRecursiveByKeys(array &$store, stdClass &$element, string $name, array $keys, mixed $config): void
+    {
+        $key = $keys[0];
+        if (count($keys) === 1) {
+            $store[$name] = !empty($store[$name]) ? $store[$name] : new stdClass;
+            $store[$name]->{$key} = $config;
+            $element->{$key} = $config;
+        } else {
+            $element->{$key} = !empty($element->{$key}) ? $element->{$key} : new stdClass;
+            $name .= ".$key";
+            $this->addRecursiveByKeys($store, $element->{$key}, $name, array_slice($keys, 1), $config);
+        }
     }
 
     /**
@@ -70,10 +126,11 @@ class Repository
             return $config;
         }
 
-        if (isset($config->{$keys[$level]}) && $level === count($keys) - 1) {
-            unset($config->{$keys[$level]});
-        } elseif (isset($config->{$keys[$level]})) {
-            $config->{$keys[$level]} = $this->removeRecursive($config->{$keys[$level]}, $keys, $level + 1);
+        $item = &$config->{$keys[$level]};
+        if (isset($item) && $level === count($keys) - 1) {
+            unset($item);
+        } else if (isset($item)) {
+            $item = $this->removeRecursive($item, $keys, $level + 1);
         }
 
         return $config;
@@ -88,10 +145,10 @@ class Repository
      * @param int $level
      * @return void
      */
-    protected function addRecursive(stdClass &$config, array $keys, mixed &$value, int $level = 0): void
+    protected function addRecursive(stdClass &$config, array $keys, mixed $value, int $level = 0): void
     {
         if ($level === count($keys) - 1) {
-            $config->{$keys[$level]} = &$value;
+            $config->{$keys[$level]} = $value;
         } else {
             if (!isset($config->{$keys[$level]})) {
                 $config->{$keys[$level]} = new stdClass;
@@ -156,16 +213,16 @@ class Repository
      * @param stdClass<string, mixed> &$config
      * @return array<string, mixed> $configsExtracted
      */
-    protected function extractConfig(string $configName, stdClass &$config): array
+    protected function extractConfig(string $configName, stdClass $config): array
     {
         $configsExtracted = [];
-        $configsExtracted[$configName] = &$config;
-        foreach ($config as $key => &$value) {
+        $configsExtracted[$configName] = $config;
+        foreach ($config as $key => $value) {
             if ($value instanceof stdClass) {
                 $configsExtracted = [...$configsExtracted, ...$this->extractConfig("$configName.$key", $value)];
             }
 
-            $configsExtracted["$configName.$key"] = &$value;
+            $configsExtracted["$configName.$key"] = $value;
         }
 
         return $configsExtracted;
