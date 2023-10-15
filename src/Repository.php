@@ -68,6 +68,11 @@ class Repository implements RepositoryInterface
     {
         $store = &$this->{$storeName};
         $keys = explode('.', $name);
+        if (is_callable($config)) {
+            $config = \Closure::fromCallable($config);
+            $config = $config->bindTo($this);
+            $config = $config();
+        }
         if (is_array($config) || $config instanceof stdClass) {
             $config = $this->toObject($config);
             foreach ($store as $key => &$value) {
